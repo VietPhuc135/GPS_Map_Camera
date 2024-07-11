@@ -43,9 +43,9 @@ public class MainActivity extends AppCompatActivity {
 
     private PreviewView cameraPreviewView;
     private ImageView imgCamera;
-    private LinearLayout linearCard;
-    private CardView cardView1;
-    private CardView cardView2;
+//    private LinearLayout linearCard;
+//    private CardView cardView1;
+//    private CardView cardView2;
     private ImageCapture imageCapture;
     private static final String TAG = "MainActivity";
 
@@ -62,19 +62,37 @@ public class MainActivity extends AppCompatActivity {
 
         cameraPreviewView = findViewById(R.id.camera);
         imgCamera = findViewById(R.id.img_camera);
-        linearCard = findViewById(R.id.linear_card);
-        cardView1 = findViewById(R.id.cardview1);
-        cardView2 = findViewById(R.id.cardview2);
+//        linearCard = findViewById(R.id.linear_card);
+//        cardView1 = findViewById(R.id.cardview1);
+//        cardView2 = findViewById(R.id.cardview2);
 
-        startCamera();
+        //startCamera();
 
         imgCamera.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                captureImageWithOverlay(MainActivity.this, cameraPreviewView, linearCard);
+                //captureImageWithOverlay(MainActivity.this, cameraPreviewView, linearCard);
+                captureImage(MainActivity.this);
             }
         });
     }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        startCamera();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Unbind camera to prevent using an invalid SurfaceView
+        ProcessCameraProvider cameraProvider = getCameraProvider();
+        if (cameraProvider != null) {
+            cameraProvider.unbindAll();
+        }
+    }
+
 
     private void startCamera() {
         ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
@@ -101,6 +119,57 @@ public class MainActivity extends AppCompatActivity {
 
         cameraProvider.unbindAll();
         cameraProvider.bindToLifecycle((LifecycleOwner) this, cameraSelector, preview, imageCapture);
+    }
+
+    private ProcessCameraProvider getCameraProvider() {
+        ListenableFuture<ProcessCameraProvider> cameraProviderFuture = ProcessCameraProvider.getInstance(this);
+        try {
+            return cameraProviderFuture.get();
+        } catch (ExecutionException | InterruptedException e) {
+            Log.e(TAG, "Camera provider error: " + e.getMessage());
+            return null;
+        }
+    }
+
+    private void captureImage(Context context) {
+        if (imageCapture == null) {
+            return;
+        }
+
+        // Ensure the directory exists
+        File storageDir = new File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM), "Camera");
+        if (!storageDir.exists()) {
+            if (!storageDir.mkdirs()) {
+                Log.e(TAG, "Failed to create directory: " + storageDir.getAbsolutePath());
+                Toast.makeText(context, "Failed to create storage directory", Toast.LENGTH_SHORT).show();
+                return;
+            }
+        }
+
+        File photoFile = new File(
+                storageDir,
+                "IMG_" + new SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(new Date()) + ".jpg"
+        );
+
+        ImageCapture.OutputFileOptions outputFileOptions = new ImageCapture.OutputFileOptions.Builder(photoFile).build();
+
+        imageCapture.takePicture(outputFileOptions, ContextCompat.getMainExecutor(context), new ImageCapture.OnImageSavedCallback() {
+            @Override
+            public void onImageSaved(@NonNull ImageCapture.OutputFileResults outputFileResults) {
+                Uri savedUri = outputFileResults.getSavedUri() != null ? outputFileResults.getSavedUri() : Uri.fromFile(photoFile);
+
+                Toast.makeText(context, "Image saved to gallery", Toast.LENGTH_SHORT).show();
+                Intent mediaScanIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE);
+                mediaScanIntent.setData(savedUri);
+                context.sendBroadcast(mediaScanIntent);
+            }
+
+            @Override
+            public void onError(@NonNull ImageCaptureException exception) {
+                Log.e(TAG, "Image capture failed: " + exception.getMessage());
+                Toast.makeText(context, "Failed to save image", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
     private void captureImageWithOverlay(Context context, PreviewView previewView, View overlayView) {
